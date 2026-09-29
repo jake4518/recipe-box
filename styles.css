@@ -187,3 +187,8 @@ details.more summary{cursor:pointer;font-weight:600;padding:12px 0;font-size:16p
 .gatehead h2{margin:14px 0 6px;font-weight:800;font-size:clamp(28px,7vw,36px);line-height:1.05;letter-spacing:-.02em}
 .gatehead p{margin:0 auto;max-width:34ch;color:var(--muted);font-size:15px}
 .gatebtn{width:100%;margin-top:8px}
+.qf{flex:1 1 auto;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:42px;padding:8px 8px 8px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-size:15px;font-weight:600;white-space:nowrap}
+.qf svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.qf[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.qf span{overflow:hidden;text-overflow:ellipsis}
+@media(max-width:374px){.qf{font-size:14px;padding:8px 6px 8px 10px}.quick{gap:6px}}

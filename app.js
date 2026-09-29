@@ -42,6 +42,7 @@ var clone = function(o){ return JSON.parse(JSON.stringify(o)); };
 var reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var I = {
+  caret:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   back:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   close:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   pencil:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
@@ -67,24 +68,26 @@ $("#app").innerHTML =
 '<div id="editor" class="overlay" hidden></div>'+
 '<div id="gate" class="overlay" hidden></div>'+
 '<div id="filterScrim" class="scrim" hidden><div class="panel" role="dialog" aria-modal="true" aria-label="Filters">'+
-  '<div class="phead"><h2>Filters</h2><button class="btn small" data-act="clearall">Clear all</button></div>'+
+  '<div class="phead"><h2 id="filterTitle">Filters</h2><button class="btn small" id="filterClear" data-act="clearall">Clear all</button></div>'+
   '<div class="pbody" id="filterBody"></div><div class="pfoot"><button class="btn primary" data-act="closefilters" id="filterDone"></button></div></div></div>'+
 '<div id="pickScrim" class="scrim" hidden><div class="panel" id="pickBox" role="dialog" aria-modal="true" aria-label="Recipe suggestions"></div></div>'+
 '<div id="toast" class="toast" role="status" hidden></div>';
 
 /* ---------- filter groups ---------- */
-var MEAL_LBL = {1:"One and done", 2:"Eat twice"}, T_A = "1 hour or less", T_B = "Over 1 hour";
+var MEAL_LBL = {1:"One-fer", 2:"Two-fer"}, T_A = "1 hour or less", T_B = "Over 1 hour";
 var GROUPS = [
   {key:"protein",  label:"Protein",         get:function(r){return r.protein||[]}, first:"Vegetarian"},
-  {key:"meals",     label:"Meals it makes",  get:function(r){return [MEAL_LBL[r.meals]||MEAL_LBL[1]]}, order:[MEAL_LBL[2],MEAL_LBL[1]]},
+  {key:"meals",     label:"One-fer or Two-fer", get:function(r){return [MEAL_LBL[r.meals]||MEAL_LBL[1]]}, order:[MEAL_LBL[1],MEAL_LBL[2]]},
   {key:"main",     label:"Main ingredient", get:function(r){return r.tags.main||[]}},
   {key:"time",     label:"Time",            get:function(r){return r.timeMin?[r.timeMin<=60?T_A:T_B]:[]}, order:[T_A,T_B]},
   {key:"effort",   label:"Effort",          get:function(r){return [r.tags.effort]}},
   {key:"cuisine",  label:"Cuisine",         get:function(r){return [r.tags.cuisine]}},
-  {key:"meal",     label:"Meal",            get:function(r){return r.tags.meal||[]}},
+  {key:"meal",     label:"Meal",            get:function(r){return r.tags.meal||[]}, order:["Breakfast","Brunch","Lunch","Dinner","Side","Snack","Condiment","Dessert"]},
   {key:"diet",     label:"Other diets",     get:function(r){return r.tags.diet||[]}}
 ];
-var QUICK_KEYS = {protein:1, meals:1};
+var QUICK = [{key:"protein", label:"Protein"}, {key:"meals", label:"Once or twice"}, {key:"meal", label:"Meal"}];
+var QUICK_KEYS = {protein:1, meals:1, meal:1};
+var sheetKey = null;
 function findGroup(key){ return GROUPS.filter(function(g){ return g.key===key; })[0]; }
 var view = "all";
 var sel = {}; GROUPS.forEach(function(g){ sel[g.key]={}; });
@@ -118,7 +121,7 @@ function matches(r){
 function options(g){
   var s={}; recipes.forEach(function(r){ g.get(r).forEach(function(v){ if(v) s[v]=1; }); });
   var a=Object.keys(s);
-  if(g.order) a.sort(function(x,y){ return g.order.indexOf(x)-g.order.indexOf(y); });
+  if(g.order) a.sort(function(x,y){ var i=g.order.indexOf(x), j=g.order.indexOf(y); if(i<0) i=99; if(j<0) j=99; return i-j || x.localeCompare(y); });
   else a.sort(function(x,y){ if(x===g.first) return -1; if(y===g.first) return 1; return x.localeCompare(y); });
   return a;
 }
@@ -197,15 +200,12 @@ var toastTimer=null;
 function toast(msg,ms){ var t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(function(){ t.hidden=true; },ms||3500); }
 
 /* ---------- list ---------- */
-function proteinOptionsInUse(){ return options(findGroup("protein")); }
 function renderQuick(){
-  var html=proteinOptionsInUse().map(function(v){
-    return '<button class="chip" data-g="protein" data-v="'+esc(v)+'" aria-pressed="'+(!!sel.protein[v])+'">'+esc(v)+'</button>';
+  $("#quick").innerHTML=QUICK.map(function(q){
+    var vals=Object.keys(sel[q.key]), n=vals.length;
+    var label = n===0 ? q.label : (n===1 ? vals[0] : q.label+" ("+n+")");
+    return '<button class="qf" data-qf="'+q.key+'" aria-pressed="'+(n>0)+'" aria-haspopup="dialog"><span>'+esc(label)+'</span>'+I.caret+'</button>';
   }).join("");
-  html+=options(findGroup("meals")).map(function(v){
-    return '<button class="chip'+(v===MEAL_LBL[2]?' lo':'')+'" data-g="meals" data-v="'+esc(v)+'" aria-pressed="'+(!!sel.meals[v])+'">'+esc(v)+'</button>';
-  }).join("");
-  $("#quick").innerHTML=html;
 }
 function renderTabs(){
   var n=plannedCount();
@@ -238,7 +238,7 @@ function renderList(){
   var n=selCount();
   $("#filterBtn").innerHTML=I.sliders+'Filters'+(n?' <span class="badge">'+n+'</span>':'');
   $("#addBtn").hidden=!canEdit;
-  renderTabs();
+  renderTabs(); renderQuick();
 }
 function syncPressed(){
   document.querySelectorAll("[data-g]").forEach(function(el){ el.setAttribute("aria-pressed",!!sel[el.dataset.g][el.dataset.v]); });
@@ -246,15 +246,21 @@ function syncPressed(){
 
 /* ---------- filter sheet ---------- */
 function drawFilters(){
-  var html="";
-  GROUPS.forEach(function(g){
+  var groups = sheetKey ? [findGroup(sheetKey)] : GROUPS, html="";
+  groups.forEach(function(g){
     var opts=options(g); if(!opts.length) return;
-    html+='<h3>'+esc(g.label)+'</h3><div class="chips">'+opts.map(function(v){
+    html+=(sheetKey?'':'<h3>'+esc(g.label)+'</h3>')+'<div class="chips">'+opts.map(function(v){
       return '<button class="chip'+(v===MEAL_LBL[2]?' lo':'')+'" data-g="'+g.key+'" data-v="'+esc(v)+'" aria-pressed="'+(!!sel[g.key][v])+'">'+esc(v)+'</button>';
     }).join("")+'</div>';
   });
+  var title = sheetKey ? findGroup(sheetKey).label : "Filters";
+  $("#filterTitle").textContent=title;
+  $("#filterScrim .panel").setAttribute("aria-label", title);
+  var cb=$("#filterClear"); cb.textContent = sheetKey ? "Clear" : "Clear all"; cb.dataset.act = sheetKey ? "cleargroup" : "clearall";
   $("#filterBody").innerHTML=html; updateDone();
 }
+function openFilters(key){ sheetKey=key||null; drawFilters(); $("#filterScrim").hidden=false; }
+function clearGroup(key){ sel[key]={}; renderList(); syncPressed(); if(!$("#filterScrim").hidden) updateDone(); }
 function updateDone(){ var n=recipes.filter(matches).length; $("#filterDone").textContent="Show "+n+" recipe"+(n===1?"":"s"); }
 function clearAll(){ GROUPS.forEach(function(g){ sel[g.key]={}; }); renderList(); syncPressed(); if(!$("#filterScrim").hidden) updateDone(); }
 
@@ -360,7 +366,8 @@ function api(action, data){
   var body={action:action, passcode:pass, who:who};
   if(data) Object.keys(data).forEach(function(k){ body[k]=data[k]; });
   return fetch(API,{method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body), redirect:"follow"})
-    .then(function(res){ return res.json(); }, function(){ throw {error:"network"}; })
+    .then(function(res){ return res.text(); }, function(){ throw {error:"network"}; })
+    .then(function(t){ try{ return JSON.parse(t); }catch(e){ throw {error:"bad_response", detail:String(t).replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim().slice(0,160)}; } })
     .then(function(res){ if(action!=="ping" && res && res.ok===false && res.error==="bad_passcode") lockOut(); return res; });
 }
 function problem(e, fallback){
@@ -368,7 +375,11 @@ function problem(e, fallback){
   if(err==="bad_passcode") toast("The passcode changed. Enter the new one to keep going.",6000);
   else if(err==="network"||!isOnline()) toast("Couldn't reach the recipe box. Check your connection and try again.",5000);
   else if(detail.indexOf("github_token")>-1) toast("The photo didn't upload because the GitHub token expired. Renew it, or remove the photo and save.",8000);
-  else toast(fallback||"Something went wrong. Try again.",5000);
+  else {
+    var why = detail || (e && e.message) || err;
+    toast((fallback||"Something went wrong. Try again.")+(why?" ("+why.slice(0,160)+")":""),9000);
+    if(window.console) console.error(e);
+  }
 }
 function setBusy(b, label){
   var s=document.querySelector('[data-act="saveed"]'); if(s){ s.disabled=b; s.textContent=b?(label||"Saving…"):"Save recipe"; }
@@ -636,10 +647,11 @@ function processPhoto(file){
 document.addEventListener("click",function(e){
   var t=e.target;
   if(t.id==="filterScrim"||t.id==="pickScrim"){ closeSheets(); return; }
-  var b=t.closest("[data-act],[data-open],[data-g],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
+  var b=t.closest("[data-act],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
   if(!b) return;
   if(b.dataset.view){ view=b.dataset.view; renderList(); window.scrollTo(0,0); return; }
   if(b.dataset.open){ closeSheets(); nav(b.dataset.open); return; }
+  if(b.dataset.qf){ openFilters(b.dataset.qf); return; }
   if(b.dataset.toggleplan){
     if(!canEdit){ toast(pass?OFFLINE_MSG:"Enter the passcode to change the meal plan."); return; }
     togglePlanned(b.dataset.toggleplan);
@@ -663,7 +675,8 @@ document.addEventListener("click",function(e){
   }
   if(b.dataset.edn){ ed.meals=+b.dataset.edn; $("#edMeals").innerHTML=mealsChipsHTML(); return; }
   switch(b.dataset.act){
-    case "filters": drawFilters(); $("#filterScrim").hidden=false; break;
+    case "filters": openFilters(null); break;
+    case "cleargroup": if(sheetKey) clearGroup(sheetKey); break;
     case "closefilters": $("#filterScrim").hidden=true; break;
     case "clearall": clearAll(); break;
     case "clearplan": clearPlan(); break;
