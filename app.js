@@ -42,6 +42,7 @@ var clone = function(o){ return JSON.parse(JSON.stringify(o)); };
 var reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var I = {
+  sun:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   caret:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   back:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   close:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
@@ -272,14 +273,41 @@ function detailHTML(r){
     (canEdit?'<button class="btn small" data-act="edit" data-id="'+esc(r.id)+'">'+I.pencil+'Edit</button>':'<span></span>')+'</div>'+
     '<div class="dhero">'+tile(r,"full")+'</div>'+
     '<h2 class="dtitle">'+esc(r.title)+'</h2>'+pills(r)+
-    (canEdit?'<p class="dplanwrap"><button class="btn small dplan" data-toggleplan="'+esc(r.id)+'" aria-pressed="'+(!!r.planned)+'">'+I.bookmark+(r.planned?'In meal plan':'Add to meal plan')+'</button></p>'
-            :(r.planned?'<p class="dplanwrap"><span class="pill dplan">'+I.bookmark+'In meal plan</span></p>':''))+
+    '<p class="dplanwrap">'+
+      (canEdit?'<button class="btn small dplan" data-toggleplan="'+esc(r.id)+'" aria-pressed="'+(!!r.planned)+'">'+I.bookmark+(r.planned?'In meal plan':'Add to meal plan')+'</button>'
+              :(r.planned?'<span class="pill dplan">'+I.bookmark+'In meal plan</span>':''))+
+      (wakeSupported()?'<button class="btn small dwake" data-act="wake" aria-pressed="'+wakeWanted+'">'+I.sun+(wakeWanted?'Screen on':'Keep screen on')+'</button>':'')+
+    '</p>'+
     (src?'<p class="src">'+src+'</p>':'')+
     (r.notes?'<p class="heads">'+esc(r.notes)+'</p>':'')+
     '<div class="dcols"><section class="ing"><h3>Ingredients</h3>'+ingredientsHTML(r)+'</section>'+
     '<section class="dir"><h3>Directions</h3><ol>'+r.steps.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join("")+'</ol></section></div>'+
     (r.meals>=2&&r.mealsNote?'<section class="left"><h3>The second meal</h3><p>'+esc(r.mealsNote)+'</p></section>':'')+
   '</div>';
+}
+
+/* ---------- keep the screen on while a recipe is open ---------- */
+var wake=null, wakeBusy=false, wakeWanted=lsGet("recipebox:wake")!=="off";
+function wakeSupported(){ return "wakeLock" in navigator; }
+function syncWake(){
+  if(!wakeSupported()) return;
+  var want = wakeWanted && !!route.id && document.visibilityState==="visible";
+  if(want && !wake && !wakeBusy){
+    wakeBusy=true;
+    navigator.wakeLock.request("screen").then(function(l){
+      wakeBusy=false; wake=l;
+      l.addEventListener("release", function(){ if(wake===l) wake=null; });
+      if(!(wakeWanted && route.id)) syncWake();
+    }).catch(function(){ wakeBusy=false; });
+  } else if(!want && wake){
+    var l=wake; wake=null; l.release().catch(function(){});
+  }
+}
+function toggleWake(btn){
+  wakeWanted=!wakeWanted; lsSet("recipebox:wake", wakeWanted?"on":"off");
+  if(btn){ btn.setAttribute("aria-pressed", String(wakeWanted)); btn.innerHTML=I.sun+(wakeWanted?"Screen on":"Keep screen on"); }
+  toast(wakeWanted?"Your screen will stay on while a recipe is open.":"Your screen will sleep like normal.");
+  syncWake();
 }
 
 /* ---------- routing (phone back button closes the recipe) ---------- */
@@ -294,6 +322,7 @@ function apply(rt){
   if(rt.id){ if(prev.id!==rt.id || d.hidden){ d.innerHTML=detailHTML(byId[rt.id]); d.hidden=false; d.scrollTop=0; } }
   else { d.hidden=true; d.innerHTML=""; }
   document.documentElement.classList.toggle("noscroll", !!rt.id || !$("#editor").hidden || !$("#gate").hidden);
+  syncWake();
 }
 function nav(id){
   try{ history.pushState({app:1},"", "#"+(id?"/r/"+id:"")); }catch(e){}
@@ -692,6 +721,7 @@ document.addEventListener("click",function(e){
       break;
     case "saveed": saveEditor(); break;
     case "unlock": unlock(); break;
+    case "wake": toggleWake(b); break;
     case "deleteed": deleteEditor(b); break;
     case "photo": document.getElementById("ed-photo").click(); break;
     case "rmphoto": ed.photo=null; $("#edPhotoRow").innerHTML=photoRowHTML(); break;
@@ -741,7 +771,7 @@ if(!pass) showGate(); else refresh(true);
 
 window.addEventListener("online", function(){ updateCanEdit(); refresh(true); });
 window.addEventListener("offline", function(){ updateCanEdit(); toast("You're offline. You can still browse, editing is paused.",5000); });
-document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="visible"){ updateCanEdit(); refresh(false); } });
+document.addEventListener("visibilitychange", function(){ syncWake(); if(document.visibilityState==="visible"){ updateCanEdit(); refresh(false); } });
 
 if("serviceWorker" in navigator){
   window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
