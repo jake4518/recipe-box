@@ -196,3 +196,6 @@ details.more summary{cursor:pointer;font-weight:600;padding:12px 0;font-size:16p
 .dplanwrap:empty{display:none}
 .dwake{display:inline-flex;align-items:center;gap:7px;margin:2px 0 0}
 .dwake[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.importbox{border:1.5px dashed var(--line);border-radius:16px;padding:14px 14px 10px;background:var(--surface)}
+.pill.time{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.pill.time svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}

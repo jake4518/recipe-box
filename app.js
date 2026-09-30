@@ -42,6 +42,7 @@ var clone = function(o){ return JSON.parse(JSON.stringify(o)); };
 var reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var I = {
+  clock:'<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   sun:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   caret:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   back:'<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
@@ -80,7 +81,6 @@ var GROUPS = [
   {key:"protein",  label:"Protein",         get:function(r){return r.protein||[]}, first:"Vegetarian"},
   {key:"meals",     label:"One-fer or Two-fer", get:function(r){return [MEAL_LBL[r.meals]||MEAL_LBL[1]]}, order:[MEAL_LBL[1],MEAL_LBL[2]]},
   {key:"main",     label:"Main ingredient", get:function(r){return r.tags.main||[]}},
-  {key:"time",     label:"Time",            get:function(r){return r.timeMin?[r.timeMin<=60?T_A:T_B]:[]}, order:[T_A,T_B]},
   {key:"effort",   label:"Effort",          get:function(r){return [r.tags.effort]}},
   {key:"cuisine",  label:"Cuisine",         get:function(r){return [r.tags.cuisine]}},
   {key:"meal",     label:"Meal",            get:function(r){return r.tags.meal||[]}, order:["Breakfast","Brunch","Lunch","Dinner","Side","Snack","Condiment","Dessert"]},
@@ -164,9 +164,15 @@ document.addEventListener("error", function(e){
   var s=document.createElement("span"); s.className="emo"; s.setAttribute("aria-hidden","true"); s.textContent=t.getAttribute("data-emo")||"🍽️";
   t.replaceWith(s);
 }, true);
-function pills(r){
+function fmtTime(m){
+  m=Math.round(m||0); if(m<=0) return "";
+  var h=Math.floor(m/60), n=m%60;
+  return h ? (h+" hr"+(n?" "+n+" min":"")) : n+" min";
+}
+function pills(r, withTime){
   var p=(r.protein||[]).map(function(x){ return '<span class="pill'+(x==="Vegetarian"?' veg':'')+'">'+esc(x)+'</span>'; });
   if(r.meals>=2) p.push('<span class="pill lo">'+MEAL_LBL[2]+'</span>');
+  if(withTime && r.timeMin>0) p.push('<span class="pill time">'+I.clock+fmtTime(r.timeMin)+'</span>');
   return '<div class="pills">'+p.join("")+'</div>';
 }
 function planToggleHTML(r){
@@ -272,7 +278,7 @@ function detailHTML(r){
     '<div class="dnav"><button class="iconbtn" data-act="up" aria-label="Back to all recipes">'+I.back+'</button>'+
     (canEdit?'<button class="btn small" data-act="edit" data-id="'+esc(r.id)+'">'+I.pencil+'Edit</button>':'<span></span>')+'</div>'+
     '<div class="dhero">'+tile(r,"full")+'</div>'+
-    '<h2 class="dtitle">'+esc(r.title)+'</h2>'+pills(r)+
+    '<h2 class="dtitle">'+esc(r.title)+'</h2>'+pills(r,true)+
     '<p class="dplanwrap">'+
       (canEdit?'<button class="btn small dplan" data-toggleplan="'+esc(r.id)+'" aria-pressed="'+(!!r.planned)+'">'+I.bookmark+(r.planned?'In meal plan':'Add to meal plan')+'</button>'
               :(r.planned?'<span class="pill dplan">'+I.bookmark+'In meal plan</span>':''))+
@@ -545,6 +551,7 @@ function editorHTML(r){
   var cuisines=uniq(recipes.map(function(x){ return x.tags.cuisine; }));
   return '<div class="edwrap">'+
    '<div class="edtop"><button class="iconbtn" data-act="cancel" aria-label="Cancel">'+I.close+'</button><h2>'+(ed.isNew?'Add recipe':'Edit recipe')+'</h2><span style="width:44px"></span></div>'+
+   (ed.isNew?'<div class="field importbox"><label class="flabel" for="ed-import">Import from a link</label><div class="otherp"><input id="ed-import" type="url" inputmode="url" placeholder="Paste a recipe link" autocomplete="off" enterkeyhint="go"><button class="btn small" data-act="import">Import</button></div><p class="hint">Fills in what it can from the recipe page. Check everything before saving.</p></div>':'')+
    '<div class="field"><label class="flabel" for="ed-title">Name</label><input id="ed-title" type="text" value="'+esc(r.title)+'" autocomplete="off"></div>'+
    '<div class="field"><span class="flabel">Photo</span><div class="photoedit" id="edPhotoRow">'+photoRowHTML()+'</div><input type="file" id="ed-photo" accept="image/*" hidden>'+
    '<p class="hint">No photo? An emoji is used instead. You can change it under More details.</p></div>'+
@@ -591,6 +598,59 @@ function openEditor(id, draft){
   document.documentElement.classList.add("noscroll");
   ed.snap=JSON.stringify(readForm());
 }
+/* ---------- import from a recipe link ---------- */
+function guessProtein(title, ings){
+  var t=(title+" \n"+ings.join(" \n")).toLowerCase()
+    .replace(/(chicken|beef|vegetable|fish|bone)[ -]?(broth|stock|bouillon|base)/g," ").replace(/fish sauce|oyster sauce/g," ");
+  var rules=[["Shrimp",/shrimp|prawn/],["Fish",/salmon|\bcod\b|tilapia|halibut|tuna|\bfish\b|trout|haddock|mahi|snapper|sea bass/],
+    ["Ground beef",/ground beef|minced beef|beef mince/],["Beef",/steak|\bbeef\b|brisket|chuck|sirloin|short rib/],
+    ["Sausage",/sausage|chorizo|kielbasa|bratwurst|andouille/],["Pork",/\bpork\b|bacon|\bham\b|prosciutto|pancetta|carnitas/],
+    ["Chicken",/chicken/],["Tofu",/tofu|tempeh/]];
+  var out=rules.filter(function(r){ return r[1].test(t); }).map(function(r){ return r[0]; });
+  if(out.indexOf("Ground beef")>-1 && !/steak|brisket|chuck|sirloin|short rib/.test(t)) out=out.filter(function(x){ return x!=="Beef"; });
+  return out.length ? out.slice(0,2) : ["Vegetarian"];
+}
+function guessMeals(cats, title){
+  var t=(cats.join(" ")+" "+title).toLowerCase(), out=[];
+  [["Breakfast",/breakfast/],["Brunch",/brunch/],["Lunch",/lunch/],["Dinner",/dinner|main|entr[eé]e|supper/],["Side",/side/],
+   ["Snack",/snack|appetizer|starter/],["Condiment",/sauce|condiment|dressing|\bdip\b|spice|seasoning/],["Dessert",/dessert|baking|cookie|cake/]]
+   .forEach(function(r){ if(r[1].test(t)) out.push(r[0]); });
+  return out.length ? out : ["Dinner"];
+}
+function importLink(){
+  var box=document.getElementById("ed-import"), url=(box&&box.value||"").trim();
+  if(!url){ toast("Paste a recipe link first."); if(box) box.focus(); return; }
+  if(!isOnline()){ toast(OFFLINE_MSG); return; }
+  var btn=document.querySelector('[data-act="import"]'); btn.disabled=true; btn.textContent="Importing…";
+  var reset=function(){ if(btn.isConnected){ btn.disabled=false; btn.textContent="Import"; } };
+  api("import",{url:url}).then(function(res){
+    reset();
+    if(!res.ok){
+      var msg={import_no_recipe:"Couldn't find a recipe on that page. You can still fill it in yourself.",
+               import_blocked:"That site blocks imports, so this one needs to be filled in by hand.",
+               import_fetch_failed:"Couldn't open that link. Check it and try again."}[res.error];
+      if(msg){ toast(msg,6000); return; }
+      throw res;
+    }
+    if(!ed) return;
+    var x=res.recipe, cur=readForm(), time=x.timeMin||0;
+    var protein=guessProtein(x.title, x.ingredients);
+    var draft=blankRecipe();
+    draft.title=x.title||cur.title; draft.hue=ed.hue; draft.photo=ed.photo;
+    draft.protein=protein; draft.meals=x.servings>=4?2:1;
+    draft.emoji=guessEmoji(draft.title, protein);
+    draft.source={name:x.sourceName||"", url:x.sourceUrl||url};
+    draft.timeMin=time;
+    draft.tags={meal:guessMeals(x.category||[], draft.title), main:[], cuisine:x.cuisine||"", effort:"", diet:[]};
+    draft.ingredients=[{group:null, items:x.ingredients||[]}];
+    draft.steps=x.steps||[];
+    openEditor(null, draft);
+    ed.snap="";   /* so closing without saving still asks first */
+    var found=[x.ingredients&&x.ingredients.length?"ingredients":"", x.steps&&x.steps.length?"directions":""].filter(Boolean);
+    toast(found.length===2?"Imported. Double-check protein and One-fer or Two-fer, then save.":"Imported what it could. Some parts were missing, so fill in the rest.",6000);
+  }).catch(function(e){ reset(); problem(e,"Couldn't import that link."); });
+}
+
 function closeEditor(){
   $("#editor").hidden=true; $("#editor").innerHTML=""; ed=null;
   document.documentElement.classList.toggle("noscroll", !!route.id || !$("#gate").hidden);
@@ -722,6 +782,7 @@ document.addEventListener("click",function(e){
     case "saveed": saveEditor(); break;
     case "unlock": unlock(); break;
     case "wake": toggleWake(b); break;
+    case "import": importLink(); break;
     case "deleteed": deleteEditor(b); break;
     case "photo": document.getElementById("ed-photo").click(); break;
     case "rmphoto": ed.photo=null; $("#edPhotoRow").innerHTML=photoRowHTML(); break;
@@ -754,6 +815,7 @@ document.addEventListener("change",function(e){
 document.addEventListener("keydown",function(e){
   if(e.key==="Enter" && e.target.id==="g-pass"){ e.preventDefault(); var gw=document.getElementById("g-who"); if(gw) gw.focus(); return; }
   if(e.key==="Enter" && e.target.id==="g-who"){ e.preventDefault(); unlock(); return; }
+  if(e.key==="Enter" && e.target.id==="ed-import"){ e.preventDefault(); importLink(); return; }
   if(e.key==="Enter" && e.target.id==="ed-otherp"){ e.preventDefault(); var b=document.querySelector('[data-act="addother"]'); b&&b.click(); return; }
   if(e.key!=="Escape") return;
   if(!$("#gate").hidden) return;

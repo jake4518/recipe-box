@@ -1,6 +1,6 @@
 // Our Recipe Box offline support.
 // Bump VERSION whenever the app files change so phones pick up the new version.
-const VERSION = "v4";
+const VERSION = "v7";
 const SHELL_CACHE = "rb-shell-" + VERSION;
 const PHOTO_CACHE = "rb-photos";
 const FONT_CACHE = "rb-fonts";
