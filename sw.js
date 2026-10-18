@@ -1,6 +1,6 @@
 // Our Recipe Box offline support.
 // Bump VERSION whenever the app files change so phones pick up the new version.
-const VERSION = "v14";
+const VERSION = "v16";
 const SHELL_CACHE = "rb-shell-" + VERSION;
 const PHOTO_CACHE = "rb-photos";
 const FONT_CACHE = "rb-fonts";
@@ -10,7 +10,8 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: "reload" skips the browser's own short-term cache so a new version never stores old files
+  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
@@ -51,7 +52,7 @@ async function cacheFirst(req, name) {
 async function staleWhileRevalidate(req, name, fallbackKey) {
   const cache = await caches.open(name);
   const hit = (await cache.match(req, { ignoreSearch: true })) || (fallbackKey ? await cache.match(fallbackKey) : null);
-  const net = fetch(req)
+  const net = fetch(req, { cache: "no-cache" })
     .then((res) => { if (res.ok) cache.put(req, res.clone()); return res; })
     .catch(() => null);
   return hit || (await net) || new Response("You're offline.", { status: 503, headers: { "Content-Type": "text/plain" } });

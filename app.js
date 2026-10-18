@@ -2,16 +2,9 @@
 (function(){
 "use strict";
 /* ---------- where the data lives ---------- */
-var APP_VERSION = "14";
-/* Light / Dark / Auto, saved on this phone. Auto follows the phone (through Chrome). */
-function themeGet(){ try{ return localStorage.getItem("recipebox:theme")||"auto"; }catch(e){ return "auto"; } }
-function themeApply(t){
-  var el=document.documentElement;
-  if(t==="light"||t==="dark") el.setAttribute("data-theme",t); else el.removeAttribute("data-theme");
-  var dark = t==="dark" || (t!=="light" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
-  var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content", dark ? "#111A16" : "#3F7A63");
-}
-themeApply(themeGet());
+var APP_VERSION = "16";
+/* The app is always dark. */
+document.documentElement.setAttribute("data-theme","dark");
 var API = "https://script.google.com/macros/s/AKfycbyCJiO1v_3d9OV8CSvS589vksbBhpK7HgRU8xpBzXIptD8kO33NE2Ly3hCxxu2wwJ35/exec";
 var K = {cache:"recipebox:cache", pass:"recipebox:pass", who:"recipebox:who", pending:"recipebox:pending"};
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
@@ -76,8 +69,6 @@ $("#app").innerHTML =
   '<div class="searchbar"><input id="q" type="search" placeholder="Search by name or ingredient" enterkeyhint="search" autocomplete="off" aria-label="Search recipes">'+
   '<div id="quick" class="quick"></div><div id="active" class="active"></div></div>'+
   '<main id="grid" class="grid"></main>'+
-  '<div class="themesw" role="group" aria-label="Theme"><span>Look</span>'+
-    ['auto','light','dark'].map(function(t){ return '<button data-theme-set="'+t+'" aria-pressed="'+(themeGet()===t)+'">'+({auto:'Match phone',light:'Light',dark:'Dark'})[t]+'</button>'; }).join('')+'</div>'+
   '<p class="ver">Recipe Box version '+APP_VERSION+'</p>'+
 '</div>'+
 '<div class="bar"><button class="btn" data-act="filters" id="filterBtn"></button>'+
@@ -936,15 +927,10 @@ function processPhoto(file){
 document.addEventListener("click",function(e){
   var t=e.target;
   if(t.id==="filterScrim"||t.id==="pickScrim"){ closeSheets(); return; }
-  var b=t.closest("[data-theme-set],[data-act],[data-rmnote],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
+  var b=t.closest("[data-act],[data-rmnote],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
   if(!b) return;
   if(b.dataset.view){ view=b.dataset.view; renderList(); window.scrollTo(0,0); return; }
   if(b.dataset.open){ closeSheets(); nav(b.dataset.open); return; }
-  if(b.dataset.themeSet){
-    var th=b.dataset.themeSet; try{ localStorage.setItem("recipebox:theme",th); }catch(err){} themeApply(th);
-    document.querySelectorAll("[data-theme-set]").forEach(function(x){ x.setAttribute("aria-pressed", String(x.dataset.themeSet===th)); });
-    return;
-  }
   if(b.dataset.qf){ openFilters(b.dataset.qf); return; }
   if(b.dataset.rmnote!==undefined){ removeNote(b); return; }
   if(b.dataset.toggleplan){
@@ -1050,6 +1036,13 @@ window.addEventListener("offline", function(){ updateCanEdit(); toast("You're of
 document.addEventListener("visibilitychange", function(){ syncWake(); if(document.visibilityState==="visible"){ updateCanEdit(); refresh(false); } });
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js", {updateViaCache:"none"}).then(function(reg){ reg.update().catch(function(){}); }).catch(function(){}); });
+  /* when a new version takes over, reload so it shows right away (unless you're mid-edit) */
+  var hadController=!!navigator.serviceWorker.controller, reloading=false;
+  navigator.serviceWorker.addEventListener("controllerchange", function(){
+    if(!hadController || reloading) return;
+    if(ed || noteOpen){ toast("A new version is ready. It'll load next time you open the app.",6000); return; }
+    reloading=true; location.reload();
+  });
 }
 })();

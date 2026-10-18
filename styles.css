@@ -227,8 +227,4 @@ details.more summary{cursor:pointer;font-weight:600;padding:12px 0;font-size:16p
 .npill{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:3px 10px 3px 8px;border-radius:999px;border:1.5px solid var(--pop);color:var(--ink);font-size:13px;font-weight:600}
 .npill svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ver{margin:28px 0 8px;text-align:center;font-size:12px;color:var(--muted)}
-.themesw{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:28px 0 0}
-.themesw span{font-size:13px;color:var(--muted);margin-right:4px}
-.themesw button{min-height:36px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;font-weight:600}
-.themesw button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
-.themesw+.ver{margin-top:12px}
+
