@@ -329,7 +329,7 @@ function tweaksHTML(r){
       (canEdit?'<button class="iconbtn tdel" data-rmnote="'+i+'" aria-label="Remove note">'+I.x+'</button>':'')+'</li>';
   }).join("");
   var form = noteOpen
-    ? '<div class="tform"><textarea id="note-text" rows="3" placeholder="Like: a little too creamy, try half the cream cheese"></textarea>'+
+    ? '<div class="tform"><textarea id="note-text" rows="3" aria-label="Note"></textarea>'+
       '<div class="tbtns"><button class="btn small" data-act="cancelnote">Cancel</button><button class="btn small primary" data-act="savenote">Save note</button></div></div>'
     : (canEdit?'<button class="btn small tadd" data-act="addnote">'+I.note+(list.length?'Add another note':'Add a note for next time')+'</button>':'');
   if(!list.length) return '<section class="tweaks empty">'+form+'</section>';
@@ -457,7 +457,11 @@ function toggleWake(btn){
   syncWake();
 }
 
-/* ---------- routing (phone back button closes the recipe) ---------- */
+/* ---------- routing and the phone's back button ----------
+   Back peels off one layer at a time: an open panel or editor, then the recipe,
+   then Meal plan back to All recipes, then search and filters. Only when nothing
+   is left does back leave the app. A single "guard" history entry sits on top
+   whenever there is something to peel, so back comes to us instead of closing the app. */
 function parseHash(){
   var p=(location.hash||"").replace(/^#\/?/,"").split("/");
   return (p[0]==="r" && byId[p[1]]) ? {id:p[1]} : {id:null};
@@ -472,16 +476,46 @@ function apply(rt){
   if(!rt.id) noteOpen=false;
   syncWake();
 }
-function nav(id){
-  try{ history.pushState({app:1},"", "#"+(id?"/r/"+id:"")); }catch(e){}
-  apply({id:id||null});
+function setHash(id){ try{ history.replaceState(history.state,"","#"+(id?"/r/"+id:"")); }catch(e){} }
+function nav(id){ setHash(id); apply({id:id||null}); syncGuard(); }
+function up(){ setHash(null); apply({id:null}); syncGuard(); }
+
+var guard=false, skipPop=false;
+function atHome(){
+  return !route.id && !ed && $("#filterScrim").hidden && $("#pickScrim").hidden && !noteOpen &&
+         view==="all" && !selCount() && !query.trim();
 }
-function up(){
-  if(history.state && history.state.app){ history.back(); return; }
-  try{ history.replaceState(null,"","#"); }catch(e){}
-  apply({id:null});
+function syncGuard(){
+  if(!$("#gate").hidden) return;
+  var home=atHome();
+  if(!home && !guard){ try{ history.pushState({guard:1},"",location.href); guard=true; }catch(e){} }
+  else if(home && guard){ guard=false; skipPop=true; try{ history.back(); }catch(e){ skipPop=false; } }
 }
-window.addEventListener("popstate", function(){ apply(parseHash()); });
+function peel(){
+  if(!$("#gate").hidden) return;
+  if(!$("#filterScrim").hidden || !$("#pickScrim").hidden){ closeSheets(); return; }
+  if(ed){
+    if(JSON.stringify(readForm())!==ed.snap && !confirm("Discard your changes to this recipe?")) return;
+    closeEditor(); return;
+  }
+  if(noteOpen){ noteOpen=false; refreshViews(); return; }
+  if(route.id){ setHash(null); apply({id:null}); return; }
+  if(view!=="all"){ view="all"; renderList(); window.scrollTo(0,0); return; }
+  if(selCount() || query.trim()){
+    GROUPS.forEach(function(g){ sel[g.key]={}; }); query=""; var q=$("#q"); if(q) q.value="";
+    renderList(); syncPressed(); window.scrollTo(0,0); return;
+  }
+}
+window.addEventListener("popstate", function(){
+  if(skipPop){ skipPop=false; return; }
+  guard=false;      /* back just used up the guard entry */
+  peel();
+  syncGuard();      /* still something to peel? put the guard back */
+});
+/* after any tap or typing, make sure the guard matches what's on screen */
+["click","input","change","keydown"].forEach(function(ev){
+  document.addEventListener(ev, function(){ setTimeout(syncGuard,0); }, true);
+});
 
 /* ---------- surprise: 2-3 suggestions ---------- */
 var deck={sig:"",ids:[],i:0,last:[]}, spinTimer=null;
@@ -649,7 +683,7 @@ function unlock(){
   var prev=pass; pass=p;
   api("ping").then(function(res){
     if(!res.ok){ pass=prev; reset(); toast(res.error==="bad_passcode"?"That passcode didn't work. Try again.":"Something went wrong. Try again."); return; }
-    lsSet(K.pass,p); who=w; lsSet(K.who,w); $("#toast").hidden=true; hideGate(); updateCanEdit(); renderList(); refresh(true);
+    lsSet(K.pass,p); who=w; lsSet(K.who,w); $("#toast").hidden=true; hideGate(); setTimeout(syncGuard,0); updateCanEdit(); renderList(); refresh(true);
   }).catch(function(e){ pass=prev; reset(); problem(e); });
 }
 
@@ -981,6 +1015,7 @@ canEdit=!!pass && isOnline();
 renderQuick(); renderList();
 apply(parseHash());
 if(!pass) showGate(); else refresh(true);
+syncGuard();
 
 window.addEventListener("online", function(){ updateCanEdit(); refresh(true); });
 window.addEventListener("offline", function(){ updateCanEdit(); toast("You're offline. You can still browse, editing is paused.",5000); });
