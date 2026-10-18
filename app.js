@@ -13,7 +13,7 @@ function normalize(r){
   if(r.meals==null) r.meals=1; if(r.planned==null) r.planned=false;
   r.tags=r.tags||{}; ["meal","main","diet"].forEach(function(k){ r.tags[k]=r.tags[k]||[]; });
   r.protein=r.protein||[]; r.aka=r.aka||[]; r.ingredients=r.ingredients||[]; r.steps=r.steps||[];
-  r.source=r.source||{name:"",url:""};
+  r.source=r.source||{name:"",url:""}; r.tweaks=r.tweaks||[];
   return r;
 }
 function setRecipes(list){
@@ -42,6 +42,9 @@ var clone = function(o){ return JSON.parse(JSON.stringify(o)); };
 var reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var I = {
+  notes:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6"/><path d="M8.5 9h7M8.5 12.5h4"/></svg>',
+  x:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  note:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   clock:'<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   sun:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   caret:'<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
@@ -182,13 +185,29 @@ function planToggleHTML(r){
 }
 function card(r){
   return '<article class="card"><button class="card-main" data-open="'+esc(r.id)+'">'+tile(r)+
-    '<div class="cbody"><h3>'+esc(r.title)+'</h3>'+pills(r)+'</div></button>'+planToggleHTML(r)+'</article>';
+    '<div class="cbody"><h3>'+esc(r.title)+'</h3>'+pills(r)+
+    ((r.tweaks||[]).length?'<span class="npill">'+I.notes+r.tweaks.length+(r.tweaks.length>1?' notes':' note')+'</span>':'')+
+    '</div></button>'+planToggleHTML(r)+'</article>';
+}
+function ingCheckHTML(line, idx){
+  var s=splitIng(line);
+  return '<li><label><input type="checkbox" data-il="'+idx+'"><span>'+(s[0]?'<span class="q">'+esc(s[0])+'</span> ':'')+esc(s[1])+'</span></label></li>';
+}
+function stepsHTML(r){
+  var idx={}, n=0; r.ingredients.forEach(function(g){ g.items.forEach(function(line){ if(idx[line]===undefined) idx[line]=n; n++; }); });
+  var per=stepIngredients(r).perStep;
+  return '<ol>'+r.steps.map(function(s,i){
+    var need=per[i]||[];
+    return '<li><p class="stext">'+esc(s)+'</p>'+
+      (need.length?'<ul class="sing">'+need.map(function(line){ return ingCheckHTML(line, idx[line]); }).join("")+'</ul>':'')+'</li>';
+  }).join("")+'</ol>';
 }
 function ingredientsHTML(r){
+  var n=0;
   return r.ingredients.map(function(g){
     return (g.group?'<h4>'+esc(g.group)+'</h4>':'')+'<ul>'+g.items.map(function(line){
-      var s=splitIng(line);
-      return '<li><label><input type="checkbox"><span>'+(s[0]?'<span class="q">'+esc(s[0])+'</span> ':'')+esc(s[1])+'</span></label></li>';
+      var s=splitIng(line), k=n++;
+      return '<li><label><input type="checkbox" data-il="'+k+'"><span>'+(s[0]?'<span class="q">'+esc(s[0])+'</span> ':'')+esc(s[1])+'</span></label></li>';
     }).join("")+'</ul>';
   }).join("");
 }
@@ -286,10 +305,132 @@ function detailHTML(r){
     '</p>'+
     (src?'<p class="src">'+src+'</p>':'')+
     (r.notes?'<p class="heads">'+esc(r.notes)+'</p>':'')+
+    tweaksHTML(r)+
     '<div class="dcols"><section class="ing"><h3>Ingredients</h3>'+ingredientsHTML(r)+'</section>'+
-    '<section class="dir"><h3>Directions</h3><ol>'+r.steps.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join("")+'</ol></section></div>'+
+    '<section class="dir"><h3>Directions</h3>'+stepsHTML(r)+'</section></div>'+
     (r.meals>=2&&r.mealsNote?'<section class="left"><h3>The second meal</h3><p>'+esc(r.mealsNote)+'</p></section>':'')+
   '</div>';
+}
+
+/* ---------- quick notes on a recipe ---------- */
+var noteOpen=false;
+function noteDate(d){
+  if(!d) return "";
+  var dt=new Date(d+"T12:00:00"); if(isNaN(dt)) return "";
+  var o={month:"short", day:"numeric"}; if(dt.getFullYear()!==new Date().getFullYear()) o.year="numeric";
+  return dt.toLocaleDateString(undefined,o);
+}
+function tweaksHTML(r){
+  var list=r.tweaks||[];
+  if(!list.length && !canEdit) return "";
+  var items=list.map(function(t,i){
+    var meta=[t.who, noteDate(t.d)].filter(Boolean).join(", ");
+    return '<li><div class="ttext">'+esc(t.text)+(meta?'<span class="tmeta">'+esc(meta)+'</span>':'')+'</div>'+
+      (canEdit?'<button class="iconbtn tdel" data-rmnote="'+i+'" aria-label="Remove note">'+I.x+'</button>':'')+'</li>';
+  }).join("");
+  var form = noteOpen
+    ? '<div class="tform"><textarea id="note-text" rows="3" placeholder="Like: a little too creamy, try half the cream cheese"></textarea>'+
+      '<div class="tbtns"><button class="btn small" data-act="cancelnote">Cancel</button><button class="btn small primary" data-act="savenote">Save note</button></div></div>'
+    : (canEdit?'<button class="btn small tadd" data-act="addnote">'+I.note+(list.length?'Add another note':'Add a note for next time')+'</button>':'');
+  if(!list.length) return '<section class="tweaks empty">'+form+'</section>';
+  return '<section class="tweaks"><h3>Our notes</h3><ul>'+items+'</ul>'+form+'</section>';
+}
+function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function sameNote(a,b){ return a.d===b.d && a.who===b.who && a.text===b.text; }
+function changeNotes(id, mutate, okMsg){
+  var r=byId[id]; if(!r) return Promise.resolve(false);
+  if(!isOnline()){ toast(OFFLINE_MSG); return Promise.resolve(false); }
+  var next=normalize(clone(r)); mutate(next);
+  return api("save",{recipe:next, baseUpdatedAt:r.updatedAt||""}).then(function(res){
+    if(res && res.error==="conflict" && res.current){   /* someone else just saved: apply the note to their version */
+      var again=normalize(clone(res.current)); mutate(again);
+      return api("save",{recipe:again, baseUpdatedAt:res.current.updatedAt});
+    }
+    return res;
+  }).then(function(res){
+    if(!res.ok) throw res;
+    upsert(res.recipe); refreshViews(); toast(okMsg); return true;
+  }).catch(function(e){ problem(e,"Couldn't save the note. Try again."); return false; });
+}
+function openNote(){
+  noteOpen=true; refreshViews();
+  setTimeout(function(){ var t=document.getElementById("note-text"); if(t){ t.focus(); t.scrollIntoView({block:"center", behavior:"smooth"}); } },60);
+}
+function saveNote(){
+  var t=document.getElementById("note-text"), text=(t&&t.value||"").replace(/\s*\n\s*/g," ").trim();
+  if(!text){ toast("Write the note first."); if(t) t.focus(); return; }
+  var b=document.querySelector('[data-act="savenote"]'); if(b){ b.disabled=true; b.textContent="Saving…"; }
+  var note={d:today(), who:who, text:text};
+  changeNotes(route.id, function(r){ r.tweaks.push(note); }, "Note added.").then(function(ok){
+    if(ok){ noteOpen=false; refreshViews(); }
+    else if(b&&b.isConnected){ b.disabled=false; b.textContent="Save note"; }
+  });
+}
+function removeNote(btn){
+  var r=byId[route.id]; if(!r) return;
+  var note=r.tweaks[+btn.dataset.rmnote]; if(!note) return;
+  if(!btn.dataset.armed){
+    btn.dataset.armed="1"; btn.classList.add("armed"); btn.setAttribute("aria-label","Tap again to remove");
+    toast("Tap the x again to remove this note.");
+    setTimeout(function(){ if(btn.isConnected){ delete btn.dataset.armed; btn.classList.remove("armed"); btn.setAttribute("aria-label","Remove note"); } },3500);
+    return;
+  }
+  changeNotes(r.id, function(x){ x.tweaks=x.tweaks.filter(function(t){ return !sameNote(t,note); }); }, "Note removed.");
+}
+
+/* ---------- cooking mode: which ingredients belong to which step ---------- */
+var ING_SKIP=("cup cups tbsp tbs tsp tablespoon tablespoons teaspoon teaspoons lb lbs pound pounds oz ounce ounces g kg gram grams ml l liter litre can cans jar jars clove cloves pinch dash bunch bunches handful sprig sprigs stalk stalks head heads piece pieces slice slices package packages pkg box bag "+
+  "large medium small big extra fresh freshly chopped diced minced sliced finely roughly thinly thickly coarsely cubed halved quartered trimmed rinsed drained divided packed heaping level generous "+
+  "to taste of and or for the a an optional plus more about cooked uncooked dried whole boneless skinless virgin low sodium reduced fat room temperature softened melted peeled grated shredded crushed beaten "+
+  "into cut inch inches thick thin bite sized size at least few some each your favorite good quality store bought homemade warm cold hot lukewarm firm ripe kosher sea fine coarse unsalted salted "+
+  "green red yellow black white brown purple light dark all purpose measured after").split(" ");
+var ING_GENERIC="oil sauce salt pepper water sugar flour cheese juice powder seed leaf leave paste stock broth vinegar cream milk butter spice mix wine zest flake".split(" ");
+var SPICE_WORDS="salt pepper cumin paprika cayenne chili chile oregano thyme coriander turmeric cinnamon garam masala curry flake nutmeg dill rosemary marjoram bay basil sage allspice clove cardamom fennel mustard seasoning spice za'atar sumac".split(" ");
+var VEG_WORDS="pepper carrot onion celery zucchini jalapeño jalapeno tomato spinach broccoli mushroom garlic potato corn pea bean cabbage kale squash eggplant cauliflower leek shallot green".split(" ");
+function stem(w){ w=w.toLowerCase(); if(/(oes|ches|shes|sses|xes)$/.test(w)) return w.slice(0,-2); if(/ies$/.test(w)&&w.length>4) return w.slice(0,-3)+"y"; if(/ves$/.test(w)) return w.slice(0,-3)+"f"; if(/[^s]s$/.test(w)&&w.length>3) return w.slice(0,-1); return w; }
+function ingKeys(line){
+  var parts=splitIng(line)[1].toLowerCase().replace(/\([^)]*\)/g," ").split(/[,;+]| - | – /);
+  var rest=parts.filter(function(p,i){ return i===0 || !/^\s*(cut|chopped|diced|minced|divided|sliced|peeled|to|for|plus|about|at|cooked|pounded|optional|finely|roughly|thinly|room|softened|melted|drained|rinsed|see|such|or|and|if|as|torn|halved|seeded|patted|trimmed|grated|shredded|crushed|beaten|packed|measured|found|according|more|then)\b/.test(p); }).join(" ");
+  var all=rest.replace(/[^a-zà-ÿ'\s-]/g," ").split(/[\s-]+/).filter(Boolean).map(stem);
+  var words=rest.replace(/[^a-zà-ÿ'\s-]/g," ").split(/[\s-]+/).filter(function(w){ return w.length>2 && ING_SKIP.indexOf(w)<0; }).map(stem);
+  return {words:words, all:all, head:words[words.length-1]||"", specific:words.filter(function(k){ return ING_GENERIC.indexOf(k)<0; })};
+}
+function stepWords(s){ var o={}; s.toLowerCase().replace(/[^a-zà-ÿ'\s-]/g," ").split(/[\s-]+/).forEach(function(w){ if(w) o[stem(w)]=1; }); return o; }
+function stepIngredients(r){
+  var all=[];
+  r.ingredients.forEach(function(g){ g.items.forEach(function(line){
+    all.push({line:line, k:ingKeys(line), qty:!!splitIng(line)[0], top:/topping|garnish|serv/i.test(g.group||"")});
+  }); });
+  var lastQty=-1; all.forEach(function(it,i){ if(it.qty) lastQty=i; });
+  var W=r.steps.map(stepWords);
+  /* pass 1: ingredients named in a step */
+  var hits=W.map(function(w){
+    var hit={};
+    all.forEach(function(it,i){
+      var k=it.k;
+      if(k.specific.length ? k.specific.some(function(x){ return w[x]; }) : (k.head && w[k.head])) hit[i]=1;
+    });
+    return hit;
+  });
+  var named={}; hits.forEach(function(h){ Object.keys(h).forEach(function(i){ named[i]=1; }); });
+  /* pass 2: "seasoning", "vegetables", "toppings" pick up ingredients no step names directly */
+  var claimed={};
+  W.forEach(function(w,si){
+    var add=function(test){ all.forEach(function(it,i){ if(!named[i] && !claimed[i] && test(it,i)){ hits[si][i]=1; claimed[i]=1; } }); };
+    if(w.season||w.seasoning||w.spice||w.spiced) add(function(it){ return it.qty && it.k.all.some(function(x){ return SPICE_WORDS.indexOf(x)>-1; }); });
+    if(w.vegetable||w.veggie||w.veg) add(function(it){ return it.qty && it.k.all.some(function(x){ return VEG_WORDS.indexOf(x)>-1; }); });
+    r.ingredients.forEach(function(g){   /* "whisk together the sauce ingredients" -> the Sauce group */
+      if(!g.group) return;
+      var gw=stepWords(g.group), keys=Object.keys(gw).filter(function(x){ return x.length>2 && x!=="for" && x!=="the"; });
+      var syn=[["sauce","dressing","marinade","glaze","vinaigrette"],["seasoning","spice","blend","rub","mixture"]].filter(function(set){ return set.some(function(x){ return gw[x]; }); })[0];
+      if((keys.length && keys.every(function(x){ return w[x]; })) || (syn && syn.some(function(x){ return w[x]; })))
+        add(function(it){ return g.items.indexOf(it.line)>-1; });
+    });
+    if(w.topping||w.garnish||w.serve||w.serving) add(function(it,i){ return it.top || (!it.qty && i>lastQty); });
+  });
+  var used={};
+  var per=hits.map(function(h){ return Object.keys(h).map(Number).sort(function(a,b){ return a-b; }).map(function(i){ used[i]=1; return all[i].line; }); });
+  return {perStep:per, unmatched:all.filter(function(it,i){ return !used[i]; }).map(function(it){ return it.line; })};
 }
 
 /* ---------- keep the screen on while a recipe is open ---------- */
@@ -328,6 +469,7 @@ function apply(rt){
   if(rt.id){ if(prev.id!==rt.id || d.hidden){ d.innerHTML=detailHTML(byId[rt.id]); d.hidden=false; d.scrollTop=0; } }
   else { d.hidden=true; d.innerHTML=""; }
   document.documentElement.classList.toggle("noscroll", !!rt.id || !$("#editor").hidden || !$("#gate").hidden);
+  if(!rt.id) noteOpen=false;
   syncWake();
 }
 function nav(id){
@@ -664,6 +806,7 @@ function saveEditor(){
   if(isNew && ed) ed.id=null;
   var orig=byId[r.id];
   r.planned = isNew ? false : !!(orig && orig.planned);
+  r.tweaks = isNew ? [] : ((orig && orig.tweaks) || []);
   var base = isNew ? "" : ((orig && orig.updatedAt) || "");
   var step=Promise.resolve();
   if(r.photo && r.photo.indexOf("data:")===0){
@@ -736,11 +879,12 @@ function processPhoto(file){
 document.addEventListener("click",function(e){
   var t=e.target;
   if(t.id==="filterScrim"||t.id==="pickScrim"){ closeSheets(); return; }
-  var b=t.closest("[data-act],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
+  var b=t.closest("[data-act],[data-rmnote],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
   if(!b) return;
   if(b.dataset.view){ view=b.dataset.view; renderList(); window.scrollTo(0,0); return; }
   if(b.dataset.open){ closeSheets(); nav(b.dataset.open); return; }
   if(b.dataset.qf){ openFilters(b.dataset.qf); return; }
+  if(b.dataset.rmnote!==undefined){ removeNote(b); return; }
   if(b.dataset.toggleplan){
     if(!canEdit){ toast(pass?OFFLINE_MSG:"Enter the passcode to change the meal plan."); return; }
     togglePlanned(b.dataset.toggleplan);
@@ -783,6 +927,9 @@ document.addEventListener("click",function(e){
     case "unlock": unlock(); break;
     case "wake": toggleWake(b); break;
     case "import": importLink(); break;
+    case "addnote": openNote(); break;
+    case "cancelnote": noteOpen=false; refreshViews(); break;
+    case "savenote": saveNote(); break;
     case "deleteed": deleteEditor(b); break;
     case "photo": document.getElementById("ed-photo").click(); break;
     case "rmphoto": ed.photo=null; $("#edPhotoRow").innerHTML=photoRowHTML(); break;
@@ -807,6 +954,10 @@ document.addEventListener("input",function(e){
   if(id==="ed-emoji"){ ed.emojiTouched=true; $("#edPhotoRow").innerHTML=photoRowHTML(); }
 });
 document.addEventListener("change",function(e){
+  if(e.target.dataset && e.target.dataset.il!==undefined){
+    var on=e.target.checked; document.querySelectorAll('#detail [data-il="'+e.target.dataset.il+'"]').forEach(function(x){ x.checked=on; });
+    return;
+  }
   if(e.target.id!=="ed-photo"||!ed) return;
   var f=e.target.files&&e.target.files[0]; if(!f) return;
   processPhoto(f).then(function(url){ ed.photo=url; $("#edPhotoRow").innerHTML=photoRowHTML(); }, function(){ toast("Couldn't read that photo. Try a different one."); });

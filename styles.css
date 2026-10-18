@@ -199,3 +199,30 @@ details.more summary{cursor:pointer;font-weight:600;padding:12px 0;font-size:16p
 .importbox{border:1.5px dashed var(--line);border-radius:16px;padding:14px 14px 10px;background:var(--surface)}
 .pill.time{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1.5px solid var(--line);color:var(--ink)}
 .pill.time svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.tweaks{margin:16px 0 0;padding:4px 16px 14px;border-radius:16px;background:color-mix(in srgb,var(--pop) 20%,var(--surface));border:1.5px solid color-mix(in srgb,var(--pop) 55%,var(--surface))}
+.tweaks.empty{padding:0;background:none;border:0}
+.tweaks h3{margin:12px 0 6px;font-size:18px}
+.tweaks ul{list-style:none;margin:0;padding:0}
+.tweaks li{display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-top:1px solid color-mix(in srgb,var(--pop) 45%,var(--surface))}
+.tweaks li:first-child{border-top:0}
+.ttext{flex:1;min-width:0;font-family:var(--read);font-size:18px;line-height:1.45;overflow-wrap:anywhere}
+.tmeta{display:block;margin-top:3px;font-family:var(--ui);font-size:13px;color:var(--muted)}
+.tdel{flex:none;width:36px;height:36px;min-height:36px;background:transparent;border-color:transparent;color:var(--muted)}
+.tdel.armed{background:var(--danger);border-color:var(--danger);color:#fff}
+.tadd{display:inline-flex;align-items:center;gap:7px;margin-top:6px;border-style:dashed}
+.tweaks.empty .tadd{margin-top:14px}
+.tform{margin-top:10px}
+.tform textarea{width:100%;min-height:84px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;resize:vertical}
+.tform textarea:focus{outline:none;border-color:var(--brand)}
+.tbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.tweaks{text-align:left}.tweaks .tadd{margin-left:0;margin-right:auto}
+.dir .stext{margin:0}
+.dir .sing{list-style:none;margin:10px 0 2px;padding:0;font-size:17px;line-height:1.4}
+.dir .sing li{counter-increment:none;padding:0;border:0}
+.dir .sing li::before{content:none}
+.dir .sing label{display:flex;gap:10px;align-items:flex-start;padding:5px 0;cursor:pointer}
+.dir .sing input{width:20px;height:20px;margin:1px 0 0;flex:none;accent-color:var(--brand)}
+.dir .sing .q{font-weight:500;color:var(--brand)}
+.dir .sing input:checked~span{text-decoration:line-through;opacity:.5}
+.npill{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:3px 10px 3px 8px;border-radius:999px;border:1.5px solid var(--pop);color:var(--ink);font-size:13px;font-weight:600}
+.npill svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
