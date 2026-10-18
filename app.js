@@ -2,6 +2,7 @@
 (function(){
 "use strict";
 /* ---------- where the data lives ---------- */
+var APP_VERSION = "12";
 var API = "https://script.google.com/macros/s/AKfycbyCJiO1v_3d9OV8CSvS589vksbBhpK7HgRU8xpBzXIptD8kO33NE2Ly3hCxxu2wwJ35/exec";
 var K = {cache:"recipebox:cache", pass:"recipebox:pass", who:"recipebox:who", pending:"recipebox:pending"};
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
@@ -66,6 +67,7 @@ $("#app").innerHTML =
   '<div class="searchbar"><input id="q" type="search" placeholder="Search by name or ingredient" enterkeyhint="search" autocomplete="off" aria-label="Search recipes">'+
   '<div id="quick" class="quick"></div><div id="active" class="active"></div></div>'+
   '<main id="grid" class="grid"></main>'+
+  '<p class="ver">Recipe Box version '+APP_VERSION+'</p>'+
 '</div>'+
 '<div class="bar"><button class="btn" data-act="filters" id="filterBtn"></button>'+
 '<button class="btn pop" data-act="surprise">'+I.shuffle+'Surprise us</button></div>'+
@@ -480,16 +482,22 @@ function setHash(id){ try{ history.replaceState(history.state,"","#"+(id?"/r/"+i
 function nav(id){ setHash(id); apply({id:id||null}); syncGuard(); }
 function up(){ setHash(null); apply({id:null}); syncGuard(); }
 
-var guard=false, skipPop=false;
-function atHome(){
-  return !route.id && !ed && $("#filterScrim").hidden && $("#pickScrim").hidden && !noteOpen &&
-         view==="all" && !selCount() && !query.trim();
+/* One history entry per open layer. Entries are only added right after a tap or
+   typing, because Android's back button skips entries a page adds on its own. */
+var depth=0, skipPops=0;
+function layers(){
+  var n=0;
+  if(!$("#filterScrim").hidden || !$("#pickScrim").hidden || ed || noteOpen) n++;
+  if(route.id) n++;
+  if(view!=="all") n++;
+  if(selCount() || query.trim()) n++;
+  return n;
 }
 function syncGuard(){
   if(!$("#gate").hidden) return;
-  var home=atHome();
-  if(!home && !guard){ try{ history.pushState({guard:1},"",location.href); guard=true; }catch(e){} }
-  else if(home && guard){ guard=false; skipPop=true; try{ history.back(); }catch(e){ skipPop=false; } }
+  var want=layers();
+  while(depth<want){ try{ history.pushState({layer:depth+1},"",location.href); }catch(e){ break; } depth++; }
+  if(depth>want){ var k=depth-want; depth=want; skipPops+=1; try{ history.go(-k); }catch(e){ skipPops-=1; } }
 }
 function peel(){
   if(!$("#gate").hidden) return;
@@ -506,13 +514,17 @@ function peel(){
     renderList(); syncPressed(); window.scrollTo(0,0); return;
   }
 }
-window.addEventListener("popstate", function(){
-  if(skipPop){ skipPop=false; return; }
-  guard=false;      /* back just used up the guard entry */
-  peel();
-  syncGuard();      /* still something to peel? put the guard back */
+window.addEventListener("popstate", function(e){
+  if(skipPops>0){ skipPops--; return; }
+  var at=(e.state && e.state.layer) || 0;
+  var steps=Math.max(1, depth-at); depth=at;
+  for(var i=0;i<steps;i++) peel();
+  var want=layers();
+  if(want>depth){   /* nothing was closed (e.g. kept unsaved edits): put the entries back */
+    while(depth<want){ try{ history.pushState({layer:depth+1},"",location.href); }catch(err){ break; } depth++; }
+  }
 });
-/* after any tap or typing, make sure the guard matches what's on screen */
+/* after any tap or typing, line the history up with what's on screen */
 ["click","input","change","keydown"].forEach(function(ev){
   document.addEventListener(ev, function(){ setTimeout(syncGuard,0); }, true);
 });
