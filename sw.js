@@ -1,6 +1,6 @@
 // Our Recipe Box offline support.
 // Bump VERSION whenever the app files change so phones pick up the new version.
-const VERSION = "v17";
+const VERSION = "v18";
 const SHELL_CACHE = "rb-shell-" + VERSION;
 const PHOTO_CACHE = "rb-photos";
 const FONT_CACHE = "rb-fonts";
@@ -28,6 +28,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
 
   if (url.origin === location.origin) {
+    // The freezer app has its own offline support, so leave its files alone.
+    if (url.pathname.includes("/freezer/")) return;
     // Photo file names never change, so once a photo is on the phone it never downloads again.
     if (url.pathname.includes("/photos/")) { e.respondWith(cacheFirst(req, PHOTO_CACHE)); return; }
     // App files: open instantly from the phone, update in the background.
