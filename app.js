@@ -2,7 +2,7 @@
 (function(){
 "use strict";
 /* ---------- where the data lives ---------- */
-var APP_VERSION = "16";
+var APP_VERSION = "17";
 /* The app is always dark. */
 document.documentElement.setAttribute("data-theme","dark");
 var API = "https://script.google.com/macros/s/AKfycbyCJiO1v_3d9OV8CSvS589vksbBhpK7HgRU8xpBzXIptD8kO33NE2Ly3hCxxu2wwJ35/exec";
@@ -17,6 +17,7 @@ function normalize(r){
   r.tags=r.tags||{}; ["meal","main","diet"].forEach(function(k){ r.tags[k]=r.tags[k]||[]; });
   r.protein=r.protein||[]; r.aka=r.aka||[]; r.ingredients=r.ingredients||[]; r.steps=r.steps||[];
   r.source=r.source||{name:"",url:""}; r.tweaks=r.tweaks||[];
+  r.kind = r.kind==="baking" ? "baking" : "cooking"; r.bakeType=r.bakeType||[]; r.makes=r.makes||"";
   return r;
 }
 function setRecipes(list){
@@ -63,7 +64,7 @@ var I = {
 /* ---------- page skeleton ---------- */
 $("#app").innerHTML =
 '<div class="wrap">'+
-  '<header class="head"><div class="headrow"><div><h1>Our Recipe Box</h1><p id="count"></p></div>'+
+  '<header class="head"><div class="headrow"><div><h1>Our Recipe Box</h1><div class="countrow"><p id="count"></p><button class="bakepill" id="bakeBtn" data-act="bakemode" aria-pressed="false">Baking</button></div></div>'+
   '<button class="btn primary small" id="addBtn" data-act="add" aria-label="Add recipe" hidden>'+I.plus+'<span class="lbl">Add recipe</span></button></div></header>'+
   '<div class="tabs" id="tabs"></div><div id="planbar" class="planbar"></div>'+
   '<div class="searchbar"><input id="q" type="search" placeholder="Search by name or ingredient" enterkeyhint="search" autocomplete="off" aria-label="Search recipes">'+
@@ -84,17 +85,28 @@ $("#app").innerHTML =
 
 /* ---------- filter groups ---------- */
 var MEAL_LBL = {1:"One-fer", 2:"Two-fer"}, T_A = "1 hour or less", T_B = "Over 1 hour";
+var BAKE_TYPES=["Bread","Cookies & bars","Cakes & cupcakes","Pies & tarts","Quick breads","Pastries"];
 var GROUPS = [
-  {key:"protein",  label:"Protein",         get:function(r){return r.protein||[]}, first:"Vegetarian"},
-  {key:"meals",     label:"One-fer or Two-fer", get:function(r){return [MEAL_LBL[r.meals]||MEAL_LBL[1]]}, order:[MEAL_LBL[1],MEAL_LBL[2]]},
-  {key:"main",     label:"Main ingredient", get:function(r){return r.tags.main||[]}},
-  {key:"effort",   label:"Effort",          get:function(r){return [r.tags.effort]}},
-  {key:"cuisine",  label:"Cuisine",         get:function(r){return [r.tags.cuisine]}},
-  {key:"meal",     label:"Meal",            get:function(r){return r.tags.meal||[]}, order:["Breakfast","Brunch","Lunch","Dinner","Side","Snack","Condiment","Dessert"]},
-  {key:"diet",     label:"Other diets",     get:function(r){return r.tags.diet||[]}}
+  {key:"protein",  label:"Protein",         get:function(r){return r.protein||[]}, first:"Vegetarian", mode:"cook"},
+  {key:"meals",     label:"One-fer or Two-fer", get:function(r){return [MEAL_LBL[r.meals]||MEAL_LBL[1]]}, order:[MEAL_LBL[1],MEAL_LBL[2]], mode:"cook"},
+  {key:"main",     label:"Main ingredient", get:function(r){return r.tags.main||[]}, mode:"cook"},
+  {key:"effort",   label:"Effort",          get:function(r){return [r.tags.effort]}, mode:"cook"},
+  {key:"cuisine",  label:"Cuisine",         get:function(r){return [r.tags.cuisine]}, mode:"cook"},
+  {key:"meal",     label:"Meal",            get:function(r){return r.tags.meal||[]}, order:["Breakfast","Brunch","Lunch","Dinner","Side","Snack","Condiment","Dessert"], mode:"cook"},
+  {key:"btype",    label:"Type",            get:function(r){return r.bakeType||[]}, order:BAKE_TYPES, mode:"bake"},
+  {key:"diet",     label:"Other diets",     get:function(r){return r.tags.diet||[]}, mode:"cook"}
 ];
 var QUICK = [{key:"protein", label:"Protein"}, {key:"meals", label:"Once or twice"}, {key:"meal", label:"Meal"}];
-var QUICK_KEYS = {protein:1, meals:1, meal:1};
+var QUICK_KEYS = {protein:1, meals:1, meal:1, btype:1};
+var mode="cook";   /* "cook" or "bake": baking recipes only show when Baking is on */
+function isBaking(r){ return r.kind==="baking"; }
+function modeGroups(){ return GROUPS.filter(function(g){ return g.mode===mode; }); }
+function quickList(){ return mode==="bake" ? [{key:"btype", label:"Type"}] : QUICK; }
+function setMode(m){
+  mode=m; GROUPS.forEach(function(g){ sel[g.key]={}; }); query=""; var q=$("#q"); if(q) q.value="";
+  document.body.classList.toggle("baking", mode==="bake");
+  renderQuick(); renderList(); window.scrollTo(0,0);
+}
 var sheetKey = null;
 function findGroup(key){ return GROUPS.filter(function(g){ return g.key===key; })[0]; }
 var view = "all";
@@ -119,6 +131,7 @@ function plannedCount(){ return recipes.filter(function(r){ return r.planned; })
 function selCount(){ var n=0; GROUPS.forEach(function(g){ n+=Object.keys(sel[g.key]).length; }); return n; }
 function matches(r){
   if(view==="plan" && !r.planned) return false;
+  if(view!=="plan" && (mode==="bake")!==isBaking(r)) return false;   /* the meal plan shows everything */
   for(var i=0;i<GROUPS.length;i++){
     var g=GROUPS[i];
     if(Object.keys(sel[g.key]).length && !g.get(r).some(function(v){ return sel[g.key][v]; })) return false;
@@ -127,7 +140,7 @@ function matches(r){
   return !q || hay[r.id].indexOf(q)>-1;
 }
 function options(g){
-  var s={}; recipes.forEach(function(r){ g.get(r).forEach(function(v){ if(v) s[v]=1; }); });
+  var s={}; recipes.forEach(function(r){ if((g.mode==="bake")!==isBaking(r)) return; g.get(r).forEach(function(v){ if(v) s[v]=1; }); });
   var a=Object.keys(s);
   if(g.order) a.sort(function(x,y){ var i=g.order.indexOf(x), j=g.order.indexOf(y); if(i<0) i=99; if(j<0) j=99; return i-j || x.localeCompare(y); });
   else a.sort(function(x,y){ if(x===g.first) return -1; if(y===g.first) return 1; return x.localeCompare(y); });
@@ -177,8 +190,14 @@ function fmtTime(m){
   return h ? (h+" hr"+(n?" "+n+" min":"")) : n+" min";
 }
 function pills(r, withTime){
-  var p=(r.protein||[]).map(function(x){ return '<span class="pill'+(x==="Vegetarian"?' veg':'')+'">'+esc(x)+'</span>'; });
-  if(r.meals>=2) p.push('<span class="pill lo">'+MEAL_LBL[2]+'</span>');
+  var p;
+  if(isBaking(r)){
+    p=(r.bakeType||[]).map(function(x){ return '<span class="pill bake">'+esc(x)+'</span>'; });
+    if(r.makes) p.push('<span class="pill makes">Makes '+esc(r.makes)+'</span>');
+  } else {
+    p=(r.protein||[]).map(function(x){ return '<span class="pill'+(x==="Vegetarian"?' veg':'')+'">'+esc(x)+'</span>'; });
+    if(r.meals>=2) p.push('<span class="pill lo">'+MEAL_LBL[2]+'</span>');
+  }
   if(withTime && r.timeMin>0) p.push('<span class="pill time">'+I.clock+fmtTime(r.timeMin)+'</span>');
   return '<div class="pills">'+p.join("")+'</div>';
 }
@@ -231,7 +250,7 @@ function toast(msg,ms){ var t=$("#toast"); t.textContent=msg; t.hidden=false; cl
 
 /* ---------- list ---------- */
 function renderQuick(){
-  $("#quick").innerHTML=QUICK.map(function(q){
+  $("#quick").innerHTML=quickList().map(function(q){
     var vals=Object.keys(sel[q.key]), n=vals.length;
     var label = n===0 ? q.label : (n===1 ? vals[0] : q.label+" ("+n+")");
     return '<button class="qf" data-qf="'+q.key+'" aria-pressed="'+(n>0)+'" aria-haspopup="dialog"><span>'+esc(label)+'</span>'+I.caret+'</button>';
@@ -242,6 +261,7 @@ function renderTabs(){
   $("#tabs").innerHTML=
     '<button class="tab" data-view="all" aria-pressed="'+(view==="all")+'">All recipes</button>'+
     '<button class="tab" data-view="plan" aria-pressed="'+(view==="plan")+'">'+I.bookmark+'Meal plan'+(n?' <span class="tcount">'+n+'</span>':'')+'</button>';
+  var bb=$("#bakeBtn"); bb.hidden = view==="plan"; bb.setAttribute("aria-pressed", String(mode==="bake"));
   $("#planbar").innerHTML = (view==="plan" && canEdit && n) ? '<button class="btn small" data-act="clearplan">Clear meal plan</button>' : "";
 }
 function rankMatches(list){
@@ -251,11 +271,12 @@ function rankMatches(list){
 }
 function renderList(){
   var list=rankMatches(recipes.filter(matches));
-  var pool = view==="plan" ? plannedCount() : recipes.length;
-  var noun = view==="plan" ? "planned" : "recipes";
-  $("#count").textContent = pool===0 ? "" : (list.length===pool ? pool+" "+noun : list.length+" of "+pool+" "+noun);
+  var pool = view==="plan" ? plannedCount() : recipes.filter(function(r){ return (mode==="bake")===isBaking(r); }).length;
+  var noun = view==="plan" ? "planned" : (mode==="bake" ? (pool===1?"baking recipe":"baking recipes") : "recipes");
+  $("#count").textContent = pool===0 ? (mode==="bake"&&view!=="plan"?"No baking yet":"") : (list.length===pool ? pool+" "+noun : list.length+" of "+pool+" "+noun);
   if(list.length) $("#grid").innerHTML=list.map(card).join("");
   else if(view==="plan" && pool===0) $("#grid").innerHTML='<div class="empty"><p>Nothing planned yet.</p><p style="margin-top:-8px">Tap the bookmark on any recipe to add it here.</p><button class="btn primary" data-view="all">Browse recipes</button></div>';
+  else if(mode==="bake" && pool===0) $("#grid").innerHTML='<div class="empty"><p>No baking recipes yet.</p>'+(canEdit?'<button class="btn primary" data-act="add">Add the first one</button>':'')+'</div>';
   else if(recipes.length) $("#grid").innerHTML='<div class="empty"><p>No recipes match those filters.</p><button class="btn primary" data-act="clearall">Clear filters</button></div>';
   else if(!loaded) $("#grid").innerHTML='<div class="empty"><p>Loading recipes…</p></div>';
   else $("#grid").innerHTML='<div class="empty"><p>No recipes yet.</p>'+(canEdit?'<button class="btn primary" data-act="add">Add the first one</button>':'')+'</div>';
@@ -276,7 +297,7 @@ function syncPressed(){
 
 /* ---------- filter sheet ---------- */
 function drawFilters(){
-  var groups = sheetKey ? [findGroup(sheetKey)] : GROUPS, html="";
+  var groups = sheetKey ? [findGroup(sheetKey)] : modeGroups(), html="";
   groups.forEach(function(g){
     var opts=options(g); if(!opts.length) return;
     html+=(sheetKey?'':'<h3>'+esc(g.label)+'</h3>')+'<div class="chips">'+opts.map(function(v){
@@ -493,6 +514,7 @@ function layers(){
   if(route.id) n++;
   if(view!=="all") n++;
   if(selCount() || query.trim()) n++;
+  if(mode==="bake") n++;
   return n;
 }
 function syncGuard(){
@@ -515,6 +537,7 @@ function peel(){
     GROUPS.forEach(function(g){ sel[g.key]={}; }); query=""; var q=$("#q"); if(q) q.value="";
     renderList(); syncPressed(); window.scrollTo(0,0); return;
   }
+  if(mode==="bake"){ setMode("cook"); return; }
 }
 window.addEventListener("popstate", function(e){
   if(skipPops>0){ skipPops--; return; }
@@ -539,7 +562,7 @@ function pickCount(n){ return n<=2 ? n : (n>=6 ? 3 : 2); }
 var MAIN_MEALS={Breakfast:1,Brunch:1,Lunch:1,Dinner:1};
 function isMain(r){ var m=r.tags.meal||[]; return !m.length || m.some(function(x){ return MAIN_MEALS[x]; }); }
 function nextBatch(){
-  var pool=recipes.filter(matches); if(!pool.length) return null;
+  var pool=recipes.filter(matches).filter(function(r){ return !isBaking(r); }); if(!pool.length) return null;
   var mainsOnly=false;
   if(!Object.keys(sel.meal).length){ var mains=pool.filter(isMain); if(mains.length && mains.length<pool.length){ pool=mains; mainsOnly=true; } }
   var n=pickCount(pool.length), s=sig();
@@ -708,13 +731,13 @@ function hueFor(s){ var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i)
 function slug(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"recipe"; }
 function uniqueId(title){ var base=slug(title), id=base; while(byId[id]) id=base+"-"+Math.random().toString(36).slice(2,6); return id; }
 function guessEmoji(title,protein){
-  var t=(title||"").toLowerCase(), rules=[[/burger/,"🍔"],[/pizza/,"🍕"],[/taco|burrito|quesadilla/,"🌮"],[/pasta|spaghetti|penne|noodle|mac|lasagna/,"🍝"],[/soup|stew|chili|chowder/,"🍲"],[/salad/,"🥗"],[/curry/,"🍛"],[/rice|bowl|risotto/,"🍚"],[/egg|shakshuka|omelet|frittata/,"🍳"],[/sandwich|wrap/,"🥪"],[/pancake|waffle/,"🥞"],[/cake|cookie|brownie|pie/,"🍰"]];
+  var t=(title||"").toLowerCase(), rules=[[/cupcake|muffin/,"🧁"],[/cookie/,"🍪"],[/brownie|blondie/,"🍫"],[/\bcakes?\b|cheesecake/,"🍰"],[/\bpie\b|tart|galette|cobbler|crumble/,"🥧"],[/croissant|danish|pastry|cinnamon roll/,"🥐"],[/bagel/,"🥯"],[/bread|loaf|focaccia|brioche|baguette|sourdough|\brolls?\b|\bbuns?\b/,"🍞"],[/burger/,"🍔"],[/pizza/,"🍕"],[/taco|burrito|quesadilla/,"🌮"],[/pasta|spaghetti|penne|noodle|mac|lasagna/,"🍝"],[/soup|stew|chili|chowder/,"🍲"],[/salad/,"🥗"],[/curry/,"🍛"],[/rice|bowl|risotto/,"🍚"],[/egg|shakshuka|omelet|frittata/,"🍳"],[/sandwich|wrap/,"🥪"],[/pancake|waffle/,"🥞"],[/cake|cookie|brownie|pie/,"🍰"]];
   for(var i=0;i<rules.length;i++) if(rules[i][0].test(t)) return rules[i][1];
   var p=(protein||[])[0];
   return {"Chicken":"🍗","Ground beef":"🥩","Beef":"🥩","Sausage":"🌭","Pork":"🥓","Fish":"🐟","Shrimp":"🍤","Tofu":"🥡","Vegetarian":"🥗"}[p]||"🍽️";
 }
 function blankRecipe(){
-  return {title:"",emoji:"🍽️",hue:Math.floor(Math.random()*360),photo:null,protein:[],meals:1,mealsNote:"",planned:false,
+  return {kind:mode==="bake"?"baking":"cooking", bakeType:[], makes:"", title:"",emoji:"🍽️",hue:Math.floor(Math.random()*360),photo:null,protein:[],meals:1,mealsNote:"",planned:false,
     source:{name:"",url:""},timeMin:0,tags:{meal:["Dinner"],main:[],cuisine:"",effort:"",diet:[]},notes:"",aka:[],ingredients:[],steps:[]};
 }
 function proteinChoices(){
@@ -723,6 +746,14 @@ function proteinChoices(){
 }
 function proteinChipsHTML(){
   return proteinChoices().map(function(p){ return '<button class="chip" data-edp="'+esc(p)+'" aria-pressed="'+(ed.protein.indexOf(p)>-1)+'">'+esc(p)+'</button>'; }).join("");
+}
+function bakeChipsHTML(){
+  var s={}, out=[]; BAKE_TYPES.concat(recipes.reduce(function(a,r){ return a.concat(r.bakeType||[]); },[]), ed.bakeType).forEach(function(t){ if(t && !s[t]){ s[t]=1; out.push(t); } });
+  return out.map(function(t){ return '<button class="chip" data-edb="'+esc(t)+'" aria-pressed="'+(ed.bakeType.indexOf(t)>-1)+'">'+esc(t)+'</button>'; }).join("");
+}
+function kindHTML(){
+  return '<div class="kindsw" id="edKind" role="group" aria-label="Cooking or baking">'+
+    ['cooking','baking'].map(function(k){ return '<button data-edk="'+k+'" aria-pressed="'+(ed.kind===k)+'">'+(k==="cooking"?"Cooking":"Baking")+'</button>'; }).join("")+'</div>';
 }
 function mealChipsHTML(){
   return MEALS.concat(ed.meal.filter(function(m){ return MEALS.indexOf(m)<0; })).map(function(m){ return '<button class="chip" data-edm="'+esc(m)+'" aria-pressed="'+(ed.meal.indexOf(m)>-1)+'">'+esc(m)+'</button>'; }).join("");
@@ -739,15 +770,19 @@ function uniq(a){ var s={}; return a.filter(function(x){ if(!x||s[x]) return fal
 function editorHTML(r){
   var efforts=uniq(["Weeknight","Weekend project"].concat(recipes.map(function(x){ return x.tags.effort; })));
   var cuisines=uniq(recipes.map(function(x){ return x.tags.cuisine; }));
-  return '<div class="edwrap">'+
+  return '<div class="edwrap'+(ed.kind==="baking"?' k-baking':'')+'">'+
    '<div class="edtop"><button class="iconbtn" data-act="cancel" aria-label="Cancel">'+I.close+'</button><h2>'+(ed.isNew?'Add recipe':'Edit recipe')+'</h2><span style="width:44px"></span></div>'+
    (ed.isNew?'<div class="field importbox"><label class="flabel" for="ed-import">Import from a link</label><div class="otherp"><input id="ed-import" type="url" inputmode="url" placeholder="Paste a recipe link" autocomplete="off" enterkeyhint="go"><button class="btn small" data-act="import">Import</button></div><p class="hint">Fills in what it can from the recipe page. Check everything before saving.</p></div>':'')+
+   '<div class="field">'+kindHTML()+'</div>'+
    '<div class="field"><label class="flabel" for="ed-title">Name</label><input id="ed-title" type="text" value="'+esc(r.title)+'" autocomplete="off"></div>'+
    '<div class="field"><span class="flabel">Photo</span><div class="photoedit" id="edPhotoRow">'+photoRowHTML()+'</div><input type="file" id="ed-photo" accept="image/*" hidden>'+
    '<p class="hint">No photo? An emoji is used instead. You can change it under More details.</p></div>'+
-      '<div class="field"><span class="flabel">Main protein</span><div class="chips" id="edProtein">'+proteinChipsHTML()+'</div>'+
+      '<div class="field bakeonly"><span class="flabel">Type</span><div class="chips" id="edBake">'+bakeChipsHTML()+'</div>'+
+   '<div class="otherp"><input id="ed-otherb" type="text" placeholder="Something else, like Crackers" autocomplete="off"><button class="btn small" data-act="addotherb">Add</button></div></div>'+
+   '<div class="field bakeonly"><label class="flabel" for="ed-makes">Makes</label><input id="ed-makes" type="text" value="'+esc(r.makes||"")+'" placeholder="24 cookies, 1 loaf, 12 muffins" autocomplete="off"></div>'+
+      '<div class="field cookonly"><span class="flabel">Main protein</span><div class="chips" id="edProtein">'+proteinChipsHTML()+'</div>'+
    '<div class="otherp"><input id="ed-otherp" type="text" placeholder="Something else, like Lamb" autocomplete="off"><button class="btn small" data-act="addother">Add</button></div></div>'+
-   '<div class="field"><span class="flabel">How many meals does it usually make?</span><div class="chips" id="edMeals">'+mealsChipsHTML()+'</div>'+
+   '<div class="field cookonly"><span class="flabel">How many meals does it usually make?</span><div class="chips" id="edMeals">'+mealsChipsHTML()+'</div>'+
    '<input id="ed-lo-note" type="text" style="margin-top:10px" placeholder="Optional tip for the second meal, like &quot;freezes well&quot;" value="'+esc(r.mealsNote)+'"></div>'+
    '<div class="field"><label class="flabel" for="ed-ing">Ingredients</label><textarea id="ed-ing" spellcheck="false">'+esc(ingToText(r.ingredients))+'</textarea>'+
    '<p class="hint">One per line. To make a group, add a line ending in a colon, like &quot;Toppings:&quot;.</p></div>'+
@@ -758,7 +793,7 @@ function editorHTML(r){
    '<details class="more"><summary>More details</summary>'+
      '<div class="field"><label class="flabel" for="ed-emoji">Emoji (shown when there\'s no photo)</label><input id="ed-emoji" type="text" maxlength="8" value="'+esc(r.emoji)+'" style="max-width:120px"></div>'+
      '<div class="field"><label class="flabel" for="ed-aka">Also searchable as</label><input id="ed-aka" type="text" value="'+esc((r.aka||[]).join(", "))+'" placeholder="Other spellings or names"><p class="hint">Never shown. Helps search find it, like &quot;dal, dahl&quot;. Separate with commas.</p></div>'+
-     '<div class="field"><span class="flabel">Meal</span><div class="chips" id="edMeal">'+mealChipsHTML()+'</div></div>'+
+     '<div class="field cookonly"><span class="flabel">Meal</span><div class="chips" id="edMeal">'+mealChipsHTML()+'</div></div>'+
      '<div class="row2 field"><div><label class="flabel" for="ed-time">Total minutes</label><input id="ed-time" type="number" inputmode="numeric" min="0" value="'+(r.timeMin||"")+'"></div>'+
      '<div><label class="flabel" for="ed-effort">Effort</label><input id="ed-effort" type="text" list="dl-effort" value="'+esc(r.tags.effort)+'" placeholder="Weeknight"></div></div>'+
      '<div class="field"><label class="flabel" for="ed-cuisine">Cuisine</label><input id="ed-cuisine" type="text" list="dl-cuisine" value="'+esc(r.tags.cuisine)+'"></div>'+
@@ -774,7 +809,8 @@ function readForm(){
   var url=v("ed-src-url").trim(); if(url && !/^https?:\/\//i.test(url)) url="https://"+url;
   return {
     id:ed.id, title:v("ed-title").trim(), emoji:v("ed-emoji").trim()||"🍽️", hue:ed.hue, photo:ed.photo,
-    protein:ed.protein.slice(), meals:ed.meals, mealsNote:v("ed-lo-note").trim(),
+    kind:ed.kind, bakeType:ed.kind==="baking"?ed.bakeType.slice():[], makes:ed.kind==="baking"?v("ed-makes").trim():"",
+    protein:ed.kind==="baking"?[]:ed.protein.slice(), meals:ed.kind==="baking"?1:ed.meals, mealsNote:ed.kind==="baking"?"":v("ed-lo-note").trim(),
     source:{name:v("ed-src-name").trim(), url:url}, timeMin:parseInt(v("ed-time"),10)||0,
     tags:{meal:ed.meal.slice(), main:csv(v("ed-main")), cuisine:v("ed-cuisine").trim(), effort:v("ed-effort").trim(), diet:csv(v("ed-diet"))},
     notes:v("ed-notes").trim(), aka:csv(v("ed-aka")), ingredients:textToIng(v("ed-ing")), steps:textToSteps(v("ed-steps"))
@@ -783,8 +819,10 @@ function readForm(){
 function openEditor(id, draft){
   var base = draft || (id ? clone(byId[id]) : blankRecipe());
   ed = {isNew:!id, id:id||null, emoji:base.emoji||"🍽️", photo:base.photo||null, hue:base.hue||0, protein:(base.protein||[]).slice(),
-        meal:(base.tags.meal||[]).slice(), meals:base.meals>=2?2:1, emojiTouched:!!id||!!draft, armed:false, snap:""};
+        meal:(base.tags.meal||[]).slice(), meals:base.meals>=2?2:1,
+        kind:base.kind==="baking"?"baking":"cooking", bakeType:(base.bakeType||[]).slice(), emojiTouched:!!id||!!draft, armed:false, snap:""};
   var box=$("#editor"); box.innerHTML=editorHTML(base); box.hidden=false; box.scrollTop=0;
+  $("#edPhotoRow").innerHTML=photoRowHTML();   /* redraw now that the new emoji box exists */
   document.documentElement.classList.add("noscroll");
   ed.snap=JSON.stringify(readForm());
 }
@@ -806,6 +844,22 @@ function guessMeals(cats, title){
    ["Snack",/snack|appetizer|starter/],["Condiment",/sauce|condiment|dressing|\bdip\b|spice|seasoning/],["Dessert",/dessert|baking|cookie|cake/]]
    .forEach(function(r){ if(r[1].test(t)) out.push(r[0]); });
   return out.length ? out : ["Dinner"];
+}
+function guessBaking(x){
+  var t=((x.title||"")+" "+(x.category||[]).join(" ")).toLowerCase(), ing=(x.ingredients||[]).join(" ").toLowerCase();
+  var bakeWord=/cookie|brownie|blondie|\bbars?\b|\bcakes?\b|cupcake|cheesecake|muffin|scone|biscuit|\bpie\b|tart|galette|crumble|cobbler|bread|loaf|focaccia|bagel|brioche|baguette|sourdough|\brolls?\b|\bbuns?\b|croissant|danish|pastry|pastries|baking|dessert/;
+  var meat=/chicken|beef|pork|sausage|shrimp|salmon|\bfish\b|bacon|turkey|\bham\b/;
+  if(!bakeWord.test(t) || meat.test(t+" "+ing) || !/flour|graham|pie crust|puff pastry/.test(ing)) return null;
+  var yeast=/yeast|sourdough starter/.test(ing), type;
+  if(/croissant|danish|pastry|pastries|cinnamon roll|sticky bun/.test(t)) type="Pastries";
+  else if(/cookie|brownie|blondie|\bbars?\b/.test(t)) type="Cookies & bars";
+  else if(/\bcakes?\b|cupcake|cheesecake/.test(t)) type="Cakes & cupcakes";
+  else if(/\bpie\b|tart|galette|crumble|cobbler/.test(t)) type="Pies & tarts";
+  else if(/muffin|scone|biscuit/.test(t) || (/bread|loaf/.test(t) && !yeast)) type="Quick breads";
+  else if(yeast || /bread|loaf|focaccia|bagel|brioche|baguette|sourdough|\brolls?\b|\bbuns?\b/.test(t)) type="Bread";
+  var y=String(x.yieldText||"").replace(/^(makes|yields?|serves)\s*:?\s*/i,"").trim();
+  var makes = /[a-z]/i.test(y) ? y : (x.servings ? String(x.servings) : "");
+  return {type:type?[type]:[], makes:makes};
 }
 function importLink(){
   var box=document.getElementById("ed-import"), url=(box&&box.value||"").trim();
@@ -834,10 +888,13 @@ function importLink(){
     draft.tags={meal:guessMeals(x.category||[], draft.title), main:[], cuisine:x.cuisine||"", effort:"", diet:[]};
     draft.ingredients=[{group:null, items:x.ingredients||[]}];
     draft.steps=x.steps||[];
+    var bake=guessBaking(x);
+    if(bake){ draft.kind="baking"; draft.bakeType=bake.type; draft.makes=bake.makes; draft.protein=[]; draft.meals=1; draft.emoji=guessEmoji(draft.title, []); }
+    else draft.kind=ed.kind;
     openEditor(null, draft);
     ed.snap="";   /* so closing without saving still asks first */
     var found=[x.ingredients&&x.ingredients.length?"ingredients":"", x.steps&&x.steps.length?"directions":""].filter(Boolean);
-    toast(found.length===2?"Imported. Double-check protein and One-fer or Two-fer, then save.":"Imported what it could. Some parts were missing, so fill in the rest.",6000);
+    toast(found.length===2?(bake?"Imported as baking. Double-check the type and what it makes, then save.":"Imported. Double-check protein and One-fer or Two-fer, then save."):"Imported what it could. Some parts were missing, so fill in the rest.",6000);
   }).catch(function(e){ reset(); problem(e,"Couldn't import that link."); });
 }
 
@@ -848,7 +905,7 @@ function closeEditor(){
 function saveEditor(){
   var r=readForm();
   if(!r.title){ toast("Give the recipe a name."); document.getElementById("ed-title").focus(); return; }
-  if(!r.protein.length){ toast("Pick a protein, or Vegetarian."); return; }
+  if(r.kind!=="baking" && !r.protein.length){ toast("Pick a protein, or Vegetarian."); return; }
   if(!isOnline()){ toast("You're offline. Your changes are still here, save once you're connected.",5000); return; }
   var isNew=!r.id; if(isNew) r.id=uniqueId(r.title);
   if(isNew && ed) ed.id=null;
@@ -927,7 +984,7 @@ function processPhoto(file){
 document.addEventListener("click",function(e){
   var t=e.target;
   if(t.id==="filterScrim"||t.id==="pickScrim"){ closeSheets(); return; }
-  var b=t.closest("[data-act],[data-rmnote],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
+  var b=t.closest("[data-edk],[data-edb],[data-act],[data-rmnote],[data-open],[data-g],[data-qf],[data-rm],[data-edp],[data-edm],[data-edn],[data-toggleplan],[data-view]");
   if(!b) return;
   if(b.dataset.view){ view=b.dataset.view; renderList(); window.scrollTo(0,0); return; }
   if(b.dataset.open){ closeSheets(); nav(b.dataset.open); return; }
@@ -955,6 +1012,14 @@ document.addEventListener("click",function(e){
     b.setAttribute("aria-pressed", j<0); return;
   }
   if(b.dataset.edn){ ed.meals=+b.dataset.edn; $("#edMeals").innerHTML=mealsChipsHTML(); return; }
+  if(b.dataset.edk){
+    ed.kind=b.dataset.edk; $("#edKind").outerHTML=kindHTML();
+    document.querySelector("#editor .edwrap").classList.toggle("k-baking", ed.kind==="baking"); autoEmoji(); return;
+  }
+  if(b.dataset.edb){
+    var bt=b.dataset.edb, bi=ed.bakeType.indexOf(bt); if(bi>-1) ed.bakeType.splice(bi,1); else ed.bakeType.push(bt);
+    $("#edBake").innerHTML=bakeChipsHTML(); return;
+  }
   switch(b.dataset.act){
     case "filters": openFilters(null); break;
     case "cleargroup": if(sheetKey) clearGroup(sheetKey); break;
@@ -966,6 +1031,12 @@ document.addEventListener("click",function(e){
     case "closepick": closeSheets(); break;
     case "up": up(); break;
     case "add": if(canEdit) openEditor(null); break;
+    case "bakemode": setMode(mode==="bake"?"cook":"bake"); break;
+    case "addotherb": {
+      var ib=document.getElementById("ed-otherb"), vb=ib.value.trim();
+      if(vb){ if(ed.bakeType.indexOf(vb)<0) ed.bakeType.push(vb); ib.value=""; $("#edBake").innerHTML=bakeChipsHTML(); }
+      break;
+    }
     case "edit": if(canEdit) openEditor(b.dataset.id); break;
     case "cancel":
       if(ed && JSON.stringify(readForm())!==ed.snap && !ed.armed){ ed.armed=true; toast("You have unsaved changes. Tap the X again to discard them."); setTimeout(function(){ if(ed) ed.armed=false; },4000); }
@@ -1015,6 +1086,7 @@ document.addEventListener("keydown",function(e){
   if(e.key==="Enter" && e.target.id==="g-pass"){ e.preventDefault(); var gw=document.getElementById("g-who"); if(gw) gw.focus(); return; }
   if(e.key==="Enter" && e.target.id==="g-who"){ e.preventDefault(); unlock(); return; }
   if(e.key==="Enter" && e.target.id==="ed-import"){ e.preventDefault(); importLink(); return; }
+  if(e.key==="Enter" && e.target.id==="ed-otherb"){ e.preventDefault(); var bo=document.querySelector('[data-act="addotherb"]'); bo&&bo.click(); return; }
   if(e.key==="Enter" && e.target.id==="ed-otherp"){ e.preventDefault(); var b=document.querySelector('[data-act="addother"]'); b&&b.click(); return; }
   if(e.key!=="Escape") return;
   if(!$("#gate").hidden) return;

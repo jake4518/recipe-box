@@ -228,3 +228,17 @@ details.more summary{cursor:pointer;font-weight:600;padding:12px 0;font-size:16p
 .npill svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ver{margin:28px 0 8px;text-align:center;font-size:12px;color:var(--muted)}
 
+.countrow{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.head .countrow p{margin:0}
+.bakepill{min-height:34px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;font-weight:700}
+.bakepill[aria-pressed="true"]{background:var(--pop);border-color:var(--pop);color:var(--on-pop)}
+.bakepill[hidden]{display:none}
+body.baking .bar .pop{display:none}
+body.baking .bar .btn{max-width:420px}
+.pill.bake{background:color-mix(in srgb,#E8A36B 30%,var(--surface));color:var(--ink)}
+.pill.makes{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.kindsw{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:999px;background:var(--chip)}
+.kindsw button{min-height:44px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:16px;font-weight:700}
+.kindsw button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand)}
+.edwrap.k-baking .cookonly{display:none}
+.edwrap:not(.k-baking) .bakeonly{display:none}
