@@ -2,7 +2,7 @@
 (function(){
 "use strict";
 /* ---------- where the data lives ---------- */
-var APP_VERSION = "17";
+var APP_VERSION = "18";
 /* The app is always dark. */
 document.documentElement.setAttribute("data-theme","dark");
 var API = "https://script.google.com/macros/s/AKfycbyCJiO1v_3d9OV8CSvS589vksbBhpK7HgRU8xpBzXIptD8kO33NE2Ly3hCxxu2wwJ35/exec";
@@ -131,7 +131,7 @@ function plannedCount(){ return recipes.filter(function(r){ return r.planned; })
 function selCount(){ var n=0; GROUPS.forEach(function(g){ n+=Object.keys(sel[g.key]).length; }); return n; }
 function matches(r){
   if(view==="plan" && !r.planned) return false;
-  if(view!=="plan" && (mode==="bake")!==isBaking(r)) return false;   /* the meal plan shows everything */
+  if(view!=="plan" && !query.trim() && (mode==="bake")!==isBaking(r)) return false;   /* the meal plan and search show everything */
   for(var i=0;i<GROUPS.length;i++){
     var g=GROUPS[i];
     if(Object.keys(sel[g.key]).length && !g.get(r).some(function(v){ return sel[g.key][v]; })) return false;
@@ -271,8 +271,9 @@ function rankMatches(list){
 }
 function renderList(){
   var list=rankMatches(recipes.filter(matches));
-  var pool = view==="plan" ? plannedCount() : recipes.filter(function(r){ return (mode==="bake")===isBaking(r); }).length;
-  var noun = view==="plan" ? "planned" : (mode==="bake" ? (pool===1?"baking recipe":"baking recipes") : "recipes");
+  var searching = view!=="plan" && !!query.trim();
+  var pool = view==="plan" ? plannedCount() : (searching ? recipes.length : recipes.filter(function(r){ return (mode==="bake")===isBaking(r); }).length);
+  var noun = view==="plan" ? "planned" : (mode==="bake" && !searching ? (pool===1?"baking recipe":"baking recipes") : "recipes");
   $("#count").textContent = pool===0 ? (mode==="bake"&&view!=="plan"?"No baking yet":"") : (list.length===pool ? pool+" "+noun : list.length+" of "+pool+" "+noun);
   if(list.length) $("#grid").innerHTML=list.map(card).join("");
   else if(view==="plan" && pool===0) $("#grid").innerHTML='<div class="empty"><p>Nothing planned yet.</p><p style="margin-top:-8px">Tap the bookmark on any recipe to add it here.</p><button class="btn primary" data-view="all">Browse recipes</button></div>';
